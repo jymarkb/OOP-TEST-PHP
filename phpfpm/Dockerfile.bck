@@ -1,0 +1,105 @@
+# FROM composer:2.2 as composer-build
+
+# ARG SSH_KEY
+
+# WORKDIR /www
+
+# Copying all since Symfony executes bootstrap cache creation on Composer Install
+# ADD ./ /www
+# COPY ./caches/vendor /www/vendor
+
+# RUN mkdir -m 700 ~/.ssh && \
+#     echo "$SSH_KEY" > ~/.ssh/id_rsa && \
+#     if [ -z "$SSH_KEY" ]; then \
+#     echo "SSH_KEY parameter was empty, please execute 'export SSH_KEY=\$(cat ~/.ssh/id_rsa)' in your terminal\n" && \
+#     exit 1; \
+#     fi && \
+#     chmod 400 ~/.ssh/id_rsa && \
+#     echo "Host *" >> /etc/ssh/ssh_config && \
+#     echo "    StrictHostKeyChecking=no" >> /etc/ssh/ssh_config && \
+#     echo "    UserKnownHostsFile=/dev/null" >> /etc/ssh/ssh_config && \
+#     echo "    IdentityFile ~/.ssh/id_rsa" >> /etc/ssh/ssh_config
+
+# RUN composer install --prefer-dist --no-scripts --ignore-platform-reqs
+
+## JS Assets
+# FROM node:20 as asset-build
+# WORKDIR /www
+
+# ARG PURGE_CSS=0
+
+# COPY ./caches/node_modules /www/node_modules
+
+# # Copy node related configuration files
+# COPY ./package.json /www/
+# COPY ./webpack.config.js /www/
+# COPY ./postcss.config.js /www/
+
+# # Copy from resources folders
+# ADD ./app/Resources/public/ /www/app/Resources/public/
+# ADD ./templates/ /www/templates/
+# ADD ./public/css/ /www/public/css/
+# ADD ./public/images/ /www/public/images/
+# ADD ./public/fonts/ /www/public/fonts/
+
+# # Copy from asset dependencies
+# COPY ./src/Lamudi/AdminOverlayBundle/Resources/public/ /www/src/Lamudi/AdminOverlayBundle/Resources/public/
+# COPY --from=composer-build /www/vendor/willdurand/js-translation-bundle/Resources/public/ /www/vendor/willdurand/js-translation-bundle/Resources/public/
+# COPY --from=composer-build /www/vendor/lamudi/pixel-adminer/dist/js/ /www/vendor/lamudi/pixel-adminer/dist/js/
+
+# ADD ./package.json /www/package.json
+# ADD ./yarn.lock /www/yarn.lock
+
+# RUN yarn install
+# RUN yarn run build
+
+## Final image
+
+# FROM php:8.1-fpm
+
+# WORKDIR /www
+# ADD ./ /www
+
+# RUN apt-get update && apt-get install -y zlib1g-dev g++ git libicu-dev zip libzip-dev zip \
+#     && docker-php-ext-install intl opcache pdo pdo_mysql \
+#     && pecl install apcu \
+#     && docker-php-ext-enable apcu \
+#     && docker-php-ext-configure zip \
+#     && docker-php-ext-install zip
+
+# WORKDIR /var/www/project
+
+# RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+# RUN curl -sS https://get.symfony.com/cli/installer | bash
+# RUN mv /root/.symfony/bin/symfony /usr/local/bin/symfony
+
+# COPY --from=composer-build /www/vendor/ /www/vendor/
+# COPY --from=asset-build /www/public/ /www/public/
+
+# COPY ./phpfpm/pixel-php.ini /usr/local/etc/php/conf.d/
+# COPY ./phpfpm/www.conf /usr/local/etc/php-fpm.d/
+# COPY ./phpfpm/autoload_runtime.php /www/vendor/autoload_runtime.php
+
+# RUN rm -rf /www/var/cache/* && \
+#     rm -rf /www/var/logs/*
+
+# RUN touch ./.env
+
+# ARG IMAGE_TAG="pxl-local"
+# ARG BUILD_DATE="no_build_date"
+# ARG BUILD_ID="development_build"
+# ARG BUILD_AUTHOR="lamudi_developer"
+
+# ENV IMAGE_TAG=${IMAGE_TAG}
+# ENV BUILD_DATE=${BUILD_DATE}
+# ENV BUILD_ID=${BUILD_ID}
+# ENV BUILD_AUTHOR=${BUILD_AUTHOR}
+
+# # Setup Entrypoint
+# ADD ./phpfpm/entrypoint.sh /entrypoint.sh
+# RUN chmod +x /entrypoint.sh
+
+# RUN ./phraseapp.sh
+
+# VOLUME ["/www"]

@@ -1,0 +1,56 @@
+version: "3.5"
+
+networks:
+  proxynet:
+    name: dev_network
+
+services:
+  dev_database:
+    image: mariadb:10.7 # or mysql:8.2
+    container_name: dev_database
+    networks:
+      proxynet:
+        aliases:
+          - dev_database
+    ports:
+      - "3306:3306"
+    volumes:
+      - dev_mysql_data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=$DB_ROOT_PASSWORD
+
+  dev_nginx:
+    image: nginx:stable-alpine
+    container_name: dev_nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./app:/var/www/project
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      proxynet:
+        aliases:
+          - dev_nginx
+
+  dev_phpfm:
+    build:
+      context: ./
+      dockerfile: ./phpfpm/Dockerfile
+    container_name: dev_phpfm
+    ports:
+      - 9000:9000
+    volumes:
+      - ./mysql:/var/lib/mysql
+      - ./app:/var/www/project
+    networks:
+      proxynet:
+        aliases:
+          - dev_phpfpm
+    env_file:
+      - .env
+    environment:
+      - DB_ROOT_PASSWORD
+      - MYSQL_PASSWORD
+
+volumes:
+  dev_mysql_data:
